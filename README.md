@@ -41,3 +41,12 @@ ORDER BY
   created_at DESC
 LIMIT 10;
 ```
+
+## Screenshots
+
+![](https://github.com/fnando/lumenaddr/raw/master/screenshots/database.png)
+
+![](https://github.com/fnando/lumenaddr/raw/master/screenshots/terminal.png)
+
+![](https://github.com/fnando/lumenaddr/raw/master/screenshots/lumenaddr.gif)
+
