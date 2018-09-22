@@ -1,1 +1,1 @@
-web: lumenaddr --database-url "$DATABASE_URL" --encryption-key "$ENCRYPTION_KEY" $SUFFIXES
+worker: lumenaddr --encryption-key "$ENCRYPTION_KEY" $SUFFIXES

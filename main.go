@@ -41,6 +41,10 @@ func main() {
     words = strings.Split(words[0], " ")
   }
 
+  if databaseUrl == "" {
+    databaseUrl = os.Getenv("DATABASE_URL")
+  }
+
   throttle = make(chan bool, maxConcurrency)
   saveToDatabase = databaseUrl != "" && encryptionKey != ""
 
