@@ -12,9 +12,9 @@ import (
   "github.com/stellar/go/keypair"
 )
 
-var databaseUrl string
-var encryptionKey string
-var saveToDatabase bool
+var databaseUrl string = os.Getenv("DATABASE_URL")
+var encryptionKey string = os.Getenv("ENCRYPTION_KEY")
+var saveToDatabase bool = databaseUrl != "" && encryptionKey != ""
 var maxConcurrency int
 var db *sql.DB
 var throttle chan bool
@@ -24,8 +24,6 @@ func main() {
   var words []string
   var verbose bool
 
-  flag.StringVar(&databaseUrl, "database-url", "", "Specify PostgreSQL's connection string")
-  flag.StringVar(&encryptionKey, "encryption-key", "", "Specify the encryption key")
   flag.IntVar(&maxConcurrency, "concurrency", 10, "Specify the concurrency")
   flag.BoolVar(&verbose, "verbose", false, "Output iterations count")
 
@@ -41,12 +39,7 @@ func main() {
     words = strings.Split(words[0], " ")
   }
 
-  if databaseUrl == "" {
-    databaseUrl = os.Getenv("DATABASE_URL")
-  }
-
   throttle = make(chan bool, maxConcurrency)
-  saveToDatabase = databaseUrl != "" && encryptionKey != ""
 
   if saveToDatabase {
     if verbose {
@@ -58,7 +51,7 @@ func main() {
     panicWithError(err)
   } else {
     if verbose {
-      fmt.Fprintf(os.Stderr, "\x1b[31mNOTICE: --database-url and --encryption-key not set; outputting keys instead.\x1b[0m\n\n")
+      fmt.Fprintf(os.Stderr, "\x1b[31mNOTICE: DATABASE_URL and ENCRYPTION_KEY config vars not set; outputting keys instead.\x1b[0m\n\n")
     }
   }
 
