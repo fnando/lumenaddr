@@ -2,6 +2,10 @@
 
 Generate vanity addresses for stellar (addresses with specific suffixes).
 
+## Downloads
+
+I have already built [executables available for download](https://github.com/fnando/lumenaddr/releases).
+
 ## Usage
 
 Just run the command providing the words you're looking for. Just remember that longer the word, the more time it'll take. The following command will lookup for keys that match the words `STELLAR` and `LUMENS`, and output them to the console.
