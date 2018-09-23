@@ -23,6 +23,7 @@ CREATE TABLE addresses (
   encrypted_private_key text NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now()
 );
+CREATE EXTENSION pgcrypto;
 ```
 
 Then you can set the database url and encryption key via env vars.
@@ -31,13 +32,14 @@ Then you can set the database url and encryption key via env vars.
 DATABASE_URL=postgres:///lumenaddr?sslmode=disable ENCRYPTION_KEY=sekret lumenaddr STELLAR LUMENS
 ```
 
-To retrieve the private key, use the following query:
+To retrieve the private key, you can use `DATABASE_URL=... ENCRYPTION_KEY=... lumenaddr --print`, which uses the following query:
 
 ```sql
 SELECT
   word,
   public_key,
-  convert_from(decrypt(encrypted_private_key::bytea, 'sekret', 'aes'), 'SQL_ASCII') private_key
+  convert_from(decrypt(encrypted_private_key::bytea, 'sekret', 'aes'), 'SQL_ASCII') private_key,
+  created_at
 FROM
   addresses
 ORDER BY
