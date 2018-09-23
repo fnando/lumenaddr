@@ -1,15 +1,18 @@
 package main
 
 import (
+  "flag"
   "fmt"
   "log"
-  "flag"
-  "strings"
   "os"
+  "strings"
+  "time"
 
   "database/sql"
   _ "github.com/lib/pq"
   "github.com/stellar/go/keypair"
+  "github.com/dustin/go-humanize"
+  "github.com/hako/durafmt"
 )
 
 var databaseUrl string = os.Getenv("DATABASE_URL")
@@ -18,14 +21,16 @@ var saveToDatabase bool = databaseUrl != "" && encryptionKey != ""
 var maxConcurrency int
 var db *sql.DB
 var throttle chan bool
+var howMany int64
+var starts time.Time
+var words []string
+
+const template = "\r🔑 %s\n🔐 %s\n📈 %s keys searched in %s\n\n🔎 Searching. Press CTRL-C to stop..."
 
 func main() {
   var err error
-  var words []string
-  var verbose bool
 
   flag.IntVar(&maxConcurrency, "concurrency", 10, "Specify the concurrency")
-  flag.BoolVar(&verbose, "verbose", false, "Output iterations count")
 
   flag.Parse()
   words = flag.Args()
@@ -42,28 +47,22 @@ func main() {
   throttle = make(chan bool, maxConcurrency)
 
   if saveToDatabase {
-    if verbose {
-      fmt.Printf("\x1b[32m=> NOTICE: saving keys to the database. To view them, use the following SQL:\x1b[0m\n")
-      fmt.Printf("\x1b[1;30m   SELECT word, public_key, convert_from(decrypt(encrypted_private_key::bytea, '<encryption key>', 'aes'), 'SQL_ASCII') private_key FROM addresses ORDER BY length(word) DESC LIMIT 10;\x1b[0m\n\n")
-    }
+    fmt.Printf("\x1b[32m=> NOTICE: saving keys to the database. To view them, use the following SQL:\x1b[0m\n")
+    fmt.Printf("\x1b[1;30m   SELECT word, public_key, convert_from(decrypt(encrypted_private_key::bytea, '<encryption key>', 'aes'), 'SQL_ASCII') private_key FROM addresses ORDER BY length(word) DESC LIMIT 10;\x1b[0m\n\n")
 
     db, err = sql.Open("postgres", databaseUrl)
     panicWithError(err)
   } else {
-    if verbose {
-      fmt.Fprintf(os.Stderr, "\x1b[31mNOTICE: DATABASE_URL and ENCRYPTION_KEY config vars not set; outputting keys instead.\x1b[0m\n\n")
-    }
+    fmt.Fprintf(os.Stderr, "\x1b[31mNOTICE: DATABASE_URL and ENCRYPTION_KEY config vars not set; outputting keys instead.\x1b[0m\n\n")
   }
 
   index := 0
+  starts = time.Now()
+
+  print("🔎 Searching. Press CTRL-C to stop...")
 
   for {
     index += 1
-
-    if verbose {
-      fmt.Printf("\r=> Lookups %d", index)
-    }
-
     throttle <- true
     go generatePair(words)
   }
@@ -104,6 +103,8 @@ func generatePair(words []string) {
 
   address := pair.Address()
   seed := pair.Seed()
+  elapsed := time.Since(starts)
+  howMany += 1
   match := matchingWord(address, words)
 
   if match == "" {
@@ -117,7 +118,9 @@ func generatePair(words []string) {
     panicWithError(err)
   } else {
     lastIndex := strings.LastIndex(address, match)
-    fmt.Printf("\n\n%s\x1b[32m%s\x1b[0m\n%s\n\n", address[0:lastIndex], match, seed)
+    formattedAddress := fmt.Sprintf("\x1b[34m%s\x1b[44m\x1b[37m%s\x1b[0m", address[0:lastIndex], match)
+    duration, _ := durafmt.ParseString(elapsed.String())
+    fmt.Printf(template, formattedAddress, seed, humanize.Comma(howMany), duration)
   }
 
   <-throttle
