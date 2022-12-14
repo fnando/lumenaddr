@@ -50,13 +50,13 @@ LIMIT 10;
 
 ## Screenshots
 
-![](https://github.com/fnando/lumenaddr/raw/master/screenshots/save.png)
+![](https://github.com/fnando/lumenaddr/raw/main/screenshots/save.png)
 
-![](https://github.com/fnando/lumenaddr/raw/master/screenshots/print-keys.png)
+![](https://github.com/fnando/lumenaddr/raw/main/screenshots/print-keys.png)
 
-![](https://github.com/fnando/lumenaddr/raw/master/screenshots/output.png)
+![](https://github.com/fnando/lumenaddr/raw/main/screenshots/output.png)
 
-![](https://github.com/fnando/lumenaddr/raw/master/screenshots/dataclips.png)
+![](https://github.com/fnando/lumenaddr/raw/main/screenshots/dataclips.png)
 
 
 ## License
