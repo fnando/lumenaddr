@@ -1,116 +1,39 @@
 package main
 
 import (
+	"crypto/hmac"
+	"crypto/sha512"
+	"encoding/binary"
 	"flag"
 	"fmt"
 	"os"
 	"strings"
 	"time"
 
-	"database/sql"
-
 	"github.com/dustin/go-humanize"
 	"github.com/dustin/go-humanize/english"
 	"github.com/hako/durafmt"
-	_ "github.com/lib/pq"
 	"github.com/stellar/go/keypair"
+	"github.com/tyler-smith/go-bip39"
 )
 
-var databaseUrl string = os.Getenv("DATABASE_URL")
-var encryptionKey string = os.Getenv("ENCRYPTION_KEY")
-var saveToDatabase bool = databaseUrl != "" && encryptionKey != ""
+var generateMnemonic bool
 var printKeys bool
-var maxConcurrency int
-var db *sql.DB
 var throttle chan bool
 var totalKeys int64
 var matchedKeys int64
 var starts time.Time
 var words []string
 
-const findSql = `
-  SELECT
-    word,
-    public_key,
-    convert_from(decrypt(encrypted_private_key::bytea, $1, 'aes'), 'SQL_ASCII') private_key,
-    created_at
-  FROM
-    addresses
-  WHERE
-    created_at > $2
-  ORDER BY
-    created_at ASC
-  LIMIT 1000
-`
-
 func main() {
-	flag.IntVar(&maxConcurrency, "concurrency", 10, "Specify the concurrency")
+	flag.BoolVar(&generateMnemonic, "mnemonic", false, "Generate keys out of mnemonic (slower)")
 	flag.BoolVar(&printKeys, "print", false, "Output saved keys")
 
 	flag.Parse()
 	words = flag.Args()
-	throttle = make(chan bool, maxConcurrency)
+	throttle = make(chan bool, 100)
 
-	if saveToDatabase {
-		connectToDatabase()
-	}
-
-	if printKeys {
-		runPrintKeys()
-	} else {
-		runFindKeys()
-	}
-}
-
-func connectToDatabase() {
-	var err error
-	db, err = sql.Open("postgres", databaseUrl)
-	panicWithError(err)
-}
-
-func runPrintKeys() {
-	var timeCondition time.Time
-	var err error
-	timeCondition, _ = time.Parse(time.RFC3339, "1900-01-1")
-
-	panicWithError(err)
-	total := 0
-
-	for {
-		rows, err := db.Query(findSql, encryptionKey, timeCondition)
-		panicWithError(err)
-
-		count := 0
-
-		for rows.Next() {
-			count += 1
-			total += 1
-
-			var suffix string
-			var address string
-			var seed string
-			var createdAt time.Time
-
-			err := rows.Scan(&suffix, &address, &seed, &createdAt)
-			panicWithError(err)
-
-			formattedAddress := formatAddress(address, suffix)
-			template := "\r🔑 %s\n🔐 %s\n⏱  %s\n\n"
-			fmt.Printf(template, formattedAddress, seed, humanize.Time(createdAt))
-
-			timeCondition = createdAt
-		}
-
-		if count == 0 {
-			break
-		}
-	}
-
-	if total == 0 {
-		fmt.Printf("\n😞 No keys found so far.\n")
-	} else {
-		fmt.Printf("🙂 %s %s found so far.\n", humanize.Comma(int64(total)), english.PluralWord(total, "key", ""))
-	}
+	runFindKeys()
 }
 
 func runFindKeys() {
@@ -121,12 +44,6 @@ func runFindKeys() {
 
 	if len(words) == 1 {
 		words = strings.Split(words[0], " ")
-	}
-
-	if saveToDatabase {
-		fmt.Printf("\x1b[32m✅ Matching keys will be saved to the database. Use `lumenaddr --print` to view them.\x1b[0m\n\n")
-	} else {
-		fmt.Fprintf(os.Stderr, "\x1b[31m⚠️  DATABASE_URL and ENCRYPTION_KEY config vars not set; outputting keys instead.\x1b[0m\n\n")
 	}
 
 	index := 0
@@ -163,9 +80,72 @@ func matchingWord(address string, words []string) string {
 	return match
 }
 
+// SLIP-0010 implementation for ed25519 (matches stellar-hd-wallet)
+func deriveEd25519Key(mnemonic string) ([]byte, error) {
+	seed := bip39.NewSeed(mnemonic, "")
+
+	// Create master key using SLIP-0010 for ed25519
+	h := hmac.New(sha512.New, []byte("ed25519 seed"))
+	h.Write(seed)
+	masterKey := h.Sum(nil)
+
+	// Stellar derivation path: m/44'/148'/0'
+	indices := []uint32{
+		0x80000000 + 44,  // 44' (hardened)
+		0x80000000 + 148, // 148' (hardened, Stellar coin type)
+		0x80000000 + 0,   // 0' (hardened, account 0)
+	}
+
+	key := masterKey[:32]
+	chainCode := masterKey[32:]
+
+	// Derive each level in the path
+	for _, index := range indices {
+		key, chainCode = deriveChildKeyEd25519(key, chainCode, index)
+	}
+
+	return key, nil
+}
+
+func deriveChildKeyEd25519(parentKey, parentChainCode []byte, index uint32) ([]byte, []byte) {
+	h := hmac.New(sha512.New, parentChainCode)
+
+	// For hardened derivation (all Stellar keys are hardened)
+	h.Write([]byte{0x00})
+	h.Write(parentKey)
+
+	// Write the index as big-endian 32-bit integer
+	indexBytes := make([]byte, 4)
+	binary.BigEndian.PutUint32(indexBytes, index)
+	h.Write(indexBytes)
+
+	digest := h.Sum(nil)
+	return digest[:32], digest[32:]
+}
+
 func generatePair(words []string) {
 	var err error
-	pair, err := keypair.Random()
+	var mnemonic string
+	var pair *keypair.Full
+
+	if generateMnemonic {
+		entropy, err := bip39.NewEntropy(256)
+		panicWithError(err)
+
+		mnemonic, err = bip39.NewMnemonic(entropy)
+		panicWithError(err)
+
+		// Use SLIP-0010 ed25519 derivation instead of BIP32
+		privateKeyBytes, err := deriveEd25519Key(mnemonic)
+		panicWithError(err)
+
+		var privateKey [32]byte
+		copy(privateKey[:], privateKeyBytes)
+
+		pair, err = keypair.FromRawSeed(privateKey)
+	} else {
+		pair, err = keypair.Random()
+	}
 
 	panicWithError(err)
 
@@ -186,14 +166,14 @@ func generatePair(words []string) {
 
 	matchedKeys += 1
 
-	if saveToDatabase {
-		_, err = db.Exec("INSERT INTO addresses (word, public_key, encrypted_private_key) VALUES ($1, $2, encrypt($3, $4, 'aes'))", match, address, seed, encryptionKey)
-		panicWithError(err)
-		printStatsMessage()
+	formattedAddress := formatAddress(address, match)
+	duration, _ := durafmt.ParseString(elapsed.String())
+	_ = duration
+
+	if generateMnemonic {
+		template := "\r🔑 %s\n🔐 %s\n📄 %s\n\n"
+		fmt.Printf(template, formattedAddress, seed, mnemonic)
 	} else {
-		formattedAddress := formatAddress(address, match)
-		duration, _ := durafmt.ParseString(elapsed.String())
-		_ = duration
 		template := "\r🔑 %s\n🔐 %s\n\n"
 		fmt.Printf(template, formattedAddress, seed)
 	}
