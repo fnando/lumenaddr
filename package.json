@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "@goreleaser/goreleaser": "^2.11.0"
+  }
+}
