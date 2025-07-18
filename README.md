@@ -2,6 +2,8 @@
 
 Generate vanity addresses for stellar (addresses with specific suffixes).
 
+![](https://github.com/fnando/lumenaddr/raw/main/lumenaddr.png)
+
 ## Downloads
 
 I have already built
@@ -24,16 +26,6 @@ considerably slower.
 ```
 lumenaddr -mnemonic STELLAR LUMENS
 ```
-
-## Screenshots
-
-![](https://github.com/fnando/lumenaddr/raw/main/screenshots/save.png)
-
-![](https://github.com/fnando/lumenaddr/raw/main/screenshots/print-keys.png)
-
-![](https://github.com/fnando/lumenaddr/raw/main/screenshots/output.png)
-
-![](https://github.com/fnando/lumenaddr/raw/main/screenshots/dataclips.png)
 
 ## License
 
